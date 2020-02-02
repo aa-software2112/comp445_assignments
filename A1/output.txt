@@ -1,0 +1,19 @@
+{
+  "args": {}, 
+  "data": "{\n  \"Assignment\": 1,\n  \"another-var\": \"qrst\"\n}\n", 
+  "files": {}, 
+  "form": {}, 
+  "headers": {
+    "Content-Length": "47", 
+    "Content-Type": "application/json", 
+    "Host": "httpbin.org", 
+    "X-Amzn-Trace-Id": "Root=1-5e3645be-00aea574bf213e509f8b89f2"
+  }, 
+  "json": {
+    "Assignment": 1, 
+    "another-var": "qrst"
+  }, 
+  "origin": "72.10.159.92", 
+  "url": "http://httpbin.org/post"
+}
+

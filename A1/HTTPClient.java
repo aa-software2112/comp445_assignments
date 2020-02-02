@@ -1,6 +1,7 @@
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
+import java.io.PrintWriter;
 import java.util.HashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -33,14 +34,16 @@ class HTTPClient {
 
   private static String INVALID_INPUT = "Invalid input command, try httpclient help for more information";
   private static String COMMAND_REGEX = "(help get|help post|help|get|post)\\s(.*)";
-  private static String GET_ARGS_REGEX = "(-v|-h [^\\s]*:[^\\s]*|http[s]?://[^\\s']*|-d [^-]*|-f [^\\s]*)";
+  private static String GET_ARGS_REGEX = "(-v|-h [^\\s]*:[^\\s]*|http[s]?://[^\\s']*|-d [^-]*|-f [^\\s]*|-o [^\\s]*)";
 
   private class ParsedResults {
-    public boolean verbose;
-    public HashMap<String, String> headers;
-    public String urlString;
-    public String inlineData;
-    public String filePath;
+    private boolean verbose;
+    private HashMap<String, String> headers;
+    private String urlString;
+    private String inlineData;
+    private String filePath;
+    private String outputFilePath;
+    private HTTPRequest.RequestType requestType;
 
     ParsedResults() {
       verbose = false;
@@ -48,6 +51,8 @@ class HTTPClient {
       urlString = null;
       inlineData = null;
       filePath = null;
+      outputFilePath = null;
+      requestType = HTTPRequest.RequestType.NONE;
     }
 
     public boolean isVerbose() { return this.verbose; }
@@ -56,14 +61,44 @@ class HTTPClient {
     public void setUrl(String u) { this.urlString = u; }
     public void setInlineData(String d) { this.inlineData = d; }
     public void setFilePath(String f) { this.filePath = f; }
+    public void setOutputFilePath(String f) { this.outputFilePath = f; }
+    public void setAsGET() { this.requestType = HTTPRequest.RequestType.GET; }
+    public void setAsPOST() { this.requestType = HTTPRequest.RequestType.POST; }
+
     public String getUrl() { return this.urlString; }
     public String getInlineData() { return this.inlineData; }
     public String getFilePath() { return this.filePath; }
+    public String getOutputFilePath() { return this.outputFilePath; }
+    public boolean fileOutputRequested() { return this.getOutputFilePath() != null; }
     public HashMap<String, String> getHeaders() { return this.headers; }
 
-    public boolean isValidGetRequest() { return urlString != null && inlineData == null && filePath == null; }
-    public boolean isValidPostRequest() { return urlString != null && !(inlineData != null && filePath != null); }
+    public boolean isGet() { return this.requestType == HTTPRequest.RequestType.GET; }
+    public boolean isPost() { return this.requestType == HTTPRequest.RequestType.POST; }
+    public boolean isValidRequest() {
+      if (this.requestType == HTTPRequest.RequestType.GET) {
+        return this.isValidGetRequest();
+      } else if (this.requestType == HTTPRequest.RequestType.POST) {
+        return this.isValidPostRequest();
+      } else {
+        return false;
+      }
+    }
 
+    private boolean isValidGetRequest() { return urlString != null && inlineData == null && filePath == null; }
+    private boolean isValidPostRequest() { return urlString != null && !(inlineData != null && filePath != null); }
+
+  }
+
+  public static void execute(String args[]) {
+    
+    HTTPClient.setup();
+
+    ParsedResults results = HTTPClient.processArgs(args);
+    if (results == null || !results.isValidRequest()) { 
+      System.out.println("Arguments invalid... please try \"help [get|post]\"");
+      return; }
+
+    HTTPClient.carryOutRequest(results);
   }
 
   public static void setup() {
@@ -75,7 +110,7 @@ class HTTPClient {
     innerHelp.put("post", POST_HELP);
   }
 
-  public static void processArgs(String args[]) {
+  public static ParsedResults processArgs(String args[]) {
     Integer nargs = args.length;
     String fullCommand = String.join(" ", args);
 
@@ -85,7 +120,7 @@ class HTTPClient {
     // Looking for 2 groups
     if(nargs == 0 || (matcher.find() && matcher.groupCount() != 2)) {
       System.out.println(INVALID_INPUT);
-      return;
+      return null;
     }
 
     // Contains the "command" to execute, followed by the arguments of that command
@@ -95,100 +130,93 @@ class HTTPClient {
     // Is a help command
     if (command.contains("help")) {
       displayHelp(command);
-      return;
+      return null;
     }
 
     ParsedResults pr = HTTPClient.handleArguments(commandArgs);
+    if (command.contains("get")) { pr.setAsGET();} 
+    else if (command.contains("post")) { pr.setAsPOST();}
+    return pr;
+  }
 
-    // Is a get/post command
-    if (command.contains("get")) {
+  public static void carryOutRequest(ParsedResults results) {
+    HTTPRequest request = null;
 
-      if (!pr.isValidGetRequest()) {
-        System.out.println("GET request format invalid!");
-        return;
-      }
-
-      GET request = GET.make(pr.getUrl());
+    if (results.isGet()) {
+      request = GET.make(results.getUrl());
       if (request == null) {
         return;
       } 
-
-      // Add each header
-      HashMap<String, String> headers = pr.getHeaders();
-      for(String key: headers.keySet()) {
-        request.addHeader(key, headers.get(key));
-      }
-
-      // Add verbose option
-      if (pr.isVerbose()) {
-        request.verbose();
-      }
-
-      request.send();
-    } else if (command.contains("post")) {
-
-      if (!pr.isValidPostRequest()) {
-        System.out.println("POST request format invalid!");
-        return;
-      }
-
-      POST request = POST.make(pr.getUrl());
+    } else if (results.isPost()) {
+      request = POST.make(results.getUrl());
       if (request == null) {
         return;
       } 
+    } else {return;}
 
-      // Add each header
-      HashMap<String, String> headers = pr.getHeaders();
-      for(String key: headers.keySet()) {
-        request.addHeader(key, headers.get(key));
-      }
-
-      // Add verbose option
-      if (pr.isVerbose()) {
-        request.verbose();
-      }
-
-      // Add body 
-      String body = null;
-      String path = null;
-      if ((body = pr.getInlineData()) != null) {
-        request.addToBody(body);
-      } else if ((path = pr.getFilePath()) != null) {
-        File f = new File(path);
-        if (!f.isFile()) {
-          System.out.println(String.format("%s is NOT a file!\n", path));
-          return;
-        }
-
-        if (!f.exists()) {
-          System.out.println(String.format("%s does not exist!\n", path));
-          return;
-        }
-
-        if (!f.canRead()) {
-          System.out.println(String.format("%s cannot be read!\n", path));
-          return;
-        }
-
-        try {
-          BufferedReader fileContainingBody = new BufferedReader(new FileReader(f));
-          String line = null;
-          StringBuilder buffer = new StringBuilder();
-
-          while((line = fileContainingBody.readLine()) != null) {
-            buffer.append(line + "\n");
-          }
-          body = buffer.toString();
-          request.addToBody(body);
-        } catch (Exception e) {
-          System.out.println("Failed to read from file... " + e);
-          return;
-        }
-
-      }
-
-      request.send();
+    // Add each header
+    HashMap<String, String> headers = results.getHeaders();
+    for(String key: headers.keySet()) {
+      request.addHeader(key, headers.get(key));
     }
+
+    // Add body - this will only execute if it is a POST as a GET will not have these fields
+    String body = null;
+    String path = null;
+    if ((body = results.getInlineData()) != null) {
+      request.addToBody(body);
+    } else if ((path = results.getFilePath()) != null) {
+      
+      File f = new File(path);
+      if (!f.isFile() || !f.exists() || !f.canRead()) {
+        System.out.println(String.format("%s is NOT a file, or does not exist, or cannot be read!\n", path));
+        return;
+      }
+
+      try {
+        BufferedReader fileContainingBody = new BufferedReader(new FileReader(f));
+        String line = null;
+        StringBuilder buffer = new StringBuilder();
+
+        while((line = fileContainingBody.readLine()) != null) {
+          buffer.append(line + "\n");
+        }
+        body = buffer.toString();
+        request.addToBody(body);
+        fileContainingBody.close();
+      } catch (Exception e) {
+        System.out.println("Failed to read from file... " + e);
+        return;
+      }
+    }
+
+    HTTPResponse response = request.send();
+    // The response was obtained
+    if (response.validResponse()) {
+
+      // Display it on output file
+      if (results.fileOutputRequested()) {
+        String outputPath = results.getOutputFilePath();
+        
+        try {
+          PrintWriter writer = new PrintWriter (new File(outputPath));
+          if (results.isVerbose()) {
+            writer.println(response.getHeaders());
+          }
+          writer.println(response.getBody());
+          writer.flush();
+          writer.close();
+        } catch(Exception e) {
+          System.out.println(String.format("Could not open file %s for writing", outputPath));
+        }
+
+      } else { // Display it on console
+        if (results.isVerbose()) {
+          System.out.println(response.getHeaders());
+        }
+        System.out.println(response.getBody());
+      }
+    } else { System.out.println("No response available...");}
   }
 
   public static ParsedResults handleArguments(String args) {
@@ -211,6 +239,8 @@ class HTTPClient {
         parsedResults.setInlineData(argument.substring(argument.indexOf(" ") + 1));
       } else if (argument.contains("-f")) {
         parsedResults.setFilePath(argument.substring(argument.indexOf(" ") + 1));
+      } else if (argument.contains("-o")) {
+        parsedResults.setOutputFilePath(argument.substring(argument.indexOf(" ") + 1));
       }
     }
 

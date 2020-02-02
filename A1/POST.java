@@ -22,7 +22,7 @@ public class POST extends HTTPRequest {
     return (POST)super.addToBody(content);
   }
 
-  public boolean send() {
+  public HTTPResponse send() {
     return super.send(HTTPRequest.RequestType.POST);
   }
 

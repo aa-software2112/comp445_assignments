@@ -14,7 +14,6 @@ class HTTPRequest {
   private PrintWriter outputWriter;
   private BufferedReader inputReader;
   private String path;
-  private boolean verbose;
   private int allowedRedirects;
   private static final String LSEP = "\r\n";  
   private static final String HTTP_VERSION = "HTTP/1.0";  
@@ -23,7 +22,8 @@ class HTTPRequest {
 
   public enum RequestType {
     GET ("GET"),
-    POST ("POST");
+    POST ("POST"),
+    NONE ("NONE");
 
     private String action;
 
@@ -43,7 +43,6 @@ class HTTPRequest {
     this.headers = new StringBuilder();
     this.paramString = new StringBuilder();
     this.body = new StringBuilder();
-    this.verbose = false;
     this.allowedRedirects = 1;
     try {
       this.communicationSocket = new Socket(this.hostName, this.port);
@@ -57,13 +56,13 @@ class HTTPRequest {
     }
   }
 
+  // Defaults to a GET, should be overriden by child
+  public HTTPResponse send() {
+    return this.send(HTTPRequest.RequestType.GET);
+  }
+  
   public HTTPRequest setRedirects(int redirects) {
     this.allowedRedirects = redirects;
-    return this;
-  }
-
-  public HTTPRequest verbose() {
-    this.verbose = true;
     return this;
   }
 
@@ -96,7 +95,7 @@ class HTTPRequest {
     return this;
   }
 
-  protected boolean send(HTTPRequest.RequestType type) {
+  protected HTTPResponse send(HTTPRequest.RequestType type) {
     StringBuilder message = new StringBuilder();
     String localPath = this.path;
 
@@ -131,11 +130,6 @@ class HTTPRequest {
     this.outputWriter.print(message.toString());
     this.outputWriter.flush();
 
-    if (this.verbose) {
-      System.out.println("*****REQUEST*****");
-      System.out.println(message.toString() + "\n");
-    }
-
     String response = null;
     StringBuilder header = new StringBuilder();
     StringBuilder body = new StringBuilder();
@@ -157,7 +151,11 @@ class HTTPRequest {
       System.out.println("Could not read input response... " + e);
     }
 
-    this.displayResponse(header.toString(), body.toString());
+    // TODO: The HTTP Response, later the entire response should be sent to this object
+    // to be processed and have it set the headesrs & body internally.
+    HTTPResponse responseObj = new HTTPResponse();
+    responseObj.setHeaders(header.toString())
+      .setBody(body.toString());
 
     String redirectUrl = null;
     if ((redirectUrl = this.checkForRedirect(header.toString())) != null && this.allowedRedirects > 0) {
@@ -167,29 +165,13 @@ class HTTPRequest {
         url = new URL("http://" + redirectUrl);
         HTTPRequest redirectRequest = new HTTPRequest(url.getHost(), url.getPath() + (url.getQuery() == null ? "" : "?" + url.getQuery()), 80);
         redirectRequest.setRedirects(this.allowedRedirects - 1);
-        if (this.verbose) {
-          redirectRequest.verbose();
-        }
-        redirectRequest.send(type);
+        return redirectRequest.send(type);
       } catch( Exception e) {
         System.out.println("Failed to create request in HTTPRequest.send(...)");
-        return false;
+        return new HTTPResponse();
       }
     }
-    return true;
-  }
-
-  private void displayResponse(String header, String body) {
-    if (header.length() == 0) {
-      return;
-    }
-    if (this.verbose){
-      System.out.println("*****RESPONSE-HEADER*****");
-      System.out.println(header);
-    }
-
-    System.out.println("*****RESPONSE-BODY*****");
-    System.out.println(body);
+    return responseObj;
   }
 
   private String checkForRedirect(String header) {

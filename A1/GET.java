@@ -19,7 +19,7 @@ public class GET extends HTTPRequest {
     super(hostname, path, port);
   }
 
-  public boolean send() {
+  public HTTPResponse send() {
     return super.send(HTTPRequest.RequestType.GET);
   }
 
