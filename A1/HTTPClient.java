@@ -33,7 +33,7 @@ class HTTPClient {
   "\tNOTE: Only one of -d and -f can be used at once";
 
   private static String INVALID_INPUT = "Invalid input command, try httpclient help for more information";
-  private static String COMMAND_REGEX = "(help get|help post|help|get|post)\\s(.*)";
+  private static String COMMAND_REGEX = "(help get|help post|help|get|post)\\s*(.*)";
   private static String GET_ARGS_REGEX = "(-v|-h [^\\s]*:[^\\s]*|http[s]?://[^\\s']*|-d [^-]*|-f [^\\s]*|-o [^\\s]*)";
 
   private class ParsedResults {
@@ -94,9 +94,11 @@ class HTTPClient {
     HTTPClient.setup();
 
     ParsedResults results = HTTPClient.processArgs(args);
-    if (results == null || !results.isValidRequest()) { 
+    if (results == null) {return;}
+    if (!results.isValidRequest()) { 
       System.out.println("Arguments invalid... please try \"help [get|post]\"");
-      return; }
+      return; 
+    }
 
     HTTPClient.carryOutRequest(results);
   }
