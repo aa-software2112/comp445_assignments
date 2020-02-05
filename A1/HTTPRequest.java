@@ -159,11 +159,14 @@ class HTTPRequest {
 
     String redirectUrl = null;
     if ((redirectUrl = this.checkForRedirect(header.toString())) != null && this.allowedRedirects > 0) {
-      System.out.println();
       URL url = null;
       try {
         url = new URL("http://" + redirectUrl);
-        HTTPRequest redirectRequest = new HTTPRequest(url.getHost(), url.getPath() + (url.getQuery() == null ? "" : "?" + url.getQuery()), 80);
+        System.out.println("Redirecting to " + redirectUrl);
+        // The path and query url should not be of the redirect link (it won't be there), it should be
+        // within the original query. For now, we will keep it with the Location: value only, and will not use 
+        // the original query url (because it is hard to test without the actual redirect url inside the query string)
+        HTTPRequest redirectRequest = new HTTPRequest(url.getHost(), url.getPath() + (url.getQuery() == null ? "" : "?" + url.getQuery()), 80);//, this.path, this.port);//
         redirectRequest.setRedirects(this.allowedRedirects - 1);
         return redirectRequest.send(type);
       } catch( Exception e) {

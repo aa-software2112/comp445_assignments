@@ -2,6 +2,7 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.PrintWriter;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -9,32 +10,35 @@ import java.util.Hashtable;
 
 class HTTPClient {
   private static HashMap<String, HashMap<String, String>> helpMenu;
-  private static String COMPLETE_HELP = "\nhttpclient provides the ability to perform simple GET and POST requests provided specific input argument\n\n" +
+  private static String COMPLETE_HELP = "\nhttpc provides the ability to perform simple GET and POST requests\n\n" +
     "Use Format:\n" + 
-    "\thttpclient command [command-specific args]\n\n" +
+    "\thttpc command [command-specific args]\n\n" +
     "The set of commands are:\n" +
-    "\tget: Perform a GET request\n" + 
-    "\tpost: Perform a POST request\n" + 
-    "\thelp: Get help in the form \"httpclient help [get|post]\"";
-  private static String GET_HELP = "\nTo perform a get request: httpclient get [-v] [-h key:value] url\n\n" +
+    String.format("%-10s Perform a GET request\n", "\tget:") + 
+    String.format("%-10s Perform a POST request\n", "\tpost:") + 
+    String.format("%-10s View command-specific args \"httpc help [get|post]\"", "\thelp:");
+  private static String GET_HELP = "\nTo perform a get request: httpc get [-v] [-h key:value]* [-o path/to/output.txt] url\n\n" +
     "Description: Performs a get request over a given url\n\n" +
     "Parameters:\n" +
-    "\t-v: verbose output (includes full request, respose)\n" +
-    "\t-h key:value: an additional header key-value pair to add - can repeat this command\n" +
-    "\turl: The full URL for which the GET will be performed (i.e. http://httpbin.org/get) and can include query parameters";
-  private static String POST_HELP = "\nTo perform a post request: httpclient post [-v] [-h key:value] [-d inline-data] [-f file] url\n\n" +
+    String.format("%-10s verbose output (includes response header & body)\n", "\t-v:") + 
+    String.format("%-10s key:value... a header key-value pair to add - can repeat this command\n", "\t-h") + 
+    String.format("%-10s The full URL for which the GET will be performed (i.e. http://httpbin.org/get) and can include query parameters\n", "\turl:") + 
+    String.format("%-10s Filepath for outputting response. Content depends on use of -v\n", "\t-o:");
+  private static String POST_HELP = "\nTo perform a post request: httpc post [-v] [-h key:value]* [-d inline-data | -f file] [-o path/to/output.txt] url\n\n" +
   "Description: Performs a post request over a given url with request body data sources from either the command line (-d) or file (-f)\n\n" +
   "Parameters:\n" +
-  "\t-v: verbose output (includes full request, respose)\n" +
-  "\t-h key:value: an additional header key-value pair to add - can repeat this command\n" +
-  "\turl: The full URL for which the POST will be performed (i.e. http://httpbin.org/post)\n" +
-  "\t-d data-string: A string of data to include in the POST body (i.e. -d \'This data goes into POST body\'\n" +
-  "\t-f file-path: Filename for input including extension (i.e. input.txt)\n" +
-  "\tNOTE: Only one of -d and -f can be used at once";
+  String.format("%-10s verbose output (includes response header & body)\n", "\t-v:") + 
+  String.format("%-10s key:value... a header key-value pair to add - can repeat this command\n", "\t-h") + 
+  String.format("%-10s The full URL for which the POST will be performed (i.e. http://httpbin.org/post)\n", "\turl:") + 
+  String.format("%-10s A string of data to include in the POST body (i.e. -d \'This data goes into POST body\')\n", "\t-d:") + 
+  String.format("%-10s Filepath leading to POST body input file. Includes extension (i.e. -f \'input.txt\')\n", "\t-f:") + 
+  String.format("%-10s Filepath for outputting response. Content depends on use of -v\n", "\t-o:") + 
+  String.format("%-10s Only one of -d and -f can be used at once\n", "\tNOTE:");
 
-  private static String INVALID_INPUT = "Invalid input command, try httpclient help for more information";
+  private static String INVALID_INPUT = "Invalid input command, try httpc help for more information";
   private static String COMMAND_REGEX = "(help get|help post|help|get|post)\\s*(.*)";
   private static String GET_ARGS_REGEX = "(-v|-h [^\\s]*:[^\\s]*|http[s]?://[^\\s']*|-d [^-]*|-f [^\\s]*|-o [^\\s]*)";
+
 
   private class ParsedResults {
     private boolean verbose;
@@ -113,21 +117,58 @@ class HTTPClient {
   }
 
   public static ParsedResults processArgs(String args[]) {
-    Integer nargs = args.length;
-    String fullCommand = String.join(" ", args);
+    int argIdx = 0;
+    ArrayList<String> commandSet = new ArrayList<String>();
+    HashMap<String, ArrayList<String>> commandArgs = new HashMap<String, ArrayList<String>>();
+    commandArgs.put("-h", new ArrayList<String>());
+    commandArgs.put("-d", new ArrayList<String>());
+    commandArgs.put("-o", new ArrayList<String>());
+    commandArgs.put("-f", new ArrayList<String>());
+    commandArgs.put("-v", new ArrayList<String>());
+    commandArgs.put("url", new ArrayList<String>());
+    try {
+        
+      while(argIdx < args.length){
+        if (args[argIdx].equals("-h")) {
+          commandArgs.get("-h").add(args[++argIdx]);
+        } else if (args[argIdx].equals("-d")) {
+          commandArgs.get("-d").add(args[++argIdx]);
+        } else if (args[argIdx].equals("-o")) {
+          commandArgs.get("-o").add(args[++argIdx]);
+        } else if (args[argIdx].equals("-f")) {
+          commandArgs.get("-f").add(args[++argIdx]);
+        } else if (args[argIdx].equals("-v")) {
+          commandArgs.get("-v").add("-v");
+          argIdx++;
+        } else if (args[argIdx].contains("http")) {
+          commandArgs.get("url").add(args[argIdx++]);
+        } else {
+          commandSet.add(args[argIdx++]);
+        }
+      }
 
-    Pattern pattern = Pattern.compile(COMMAND_REGEX, Pattern.CASE_INSENSITIVE);
-    Matcher matcher = pattern.matcher(fullCommand);
-
-    // Looking for 2 groups
-    if(nargs == 0 || (matcher.find() && matcher.groupCount() != 2)) {
-      System.out.println(INVALID_INPUT);
+    } catch(ArrayIndexOutOfBoundsException e) {
+      System.out.println("Incorrect argument format... " + e);
       return null;
     }
 
+    // Custom combination of arguments
+    // Integer nargs = args.length;
+    // String fullCommand = String.join(" ", args);
+
+    // Pattern pattern = Pattern.compile(COMMAND_REGEX, Pattern.CASE_INSENSITIVE);
+    // Matcher matcher = pattern.matcher(fullCommand);
+
+    // // Looking for 2 groups
+    // if(nargs == 0 || (matcher.find() && matcher.groupCount() != 2)) {
+    //   System.out.println(INVALID_INPUT);
+    //   return null;
+    // }
+
     // Contains the "command" to execute, followed by the arguments of that command
-    String command = matcher.group(1).toLowerCase();
-    String commandArgs = matcher.group(2);
+    String command = String.join(" ", commandSet);
+    // String command = matcher.group(1).toLowerCase();
+    // String commandArgs = matcher.group(2);
 
     // Is a help command
     if (command.contains("help")) {
@@ -146,15 +187,14 @@ class HTTPClient {
 
     if (results.isGet()) {
       request = GET.make(results.getUrl());
-      if (request == null) {
-        return;
-      } 
     } else if (results.isPost()) {
       request = POST.make(results.getUrl());
-      if (request == null) {
-        return;
-      } 
     } else {return;}
+
+    // Request failed to create
+    if (request == null) {
+      return;
+    } 
 
     // Add each header
     HashMap<String, String> headers = results.getHeaders();
@@ -213,6 +253,7 @@ class HTTPClient {
         }
 
       } else { // Display it on console
+        System.out.println();
         if (results.isVerbose()) {
           System.out.println(response.getHeaders());
         }
@@ -221,28 +262,29 @@ class HTTPClient {
     } else { System.out.println("No response available...");}
   }
 
-  public static ParsedResults handleArguments(String args) {
-    Pattern pattern = Pattern.compile(HTTPClient.GET_ARGS_REGEX, Pattern.CASE_INSENSITIVE);
-    Matcher matcher = pattern.matcher(args);
+  public static ParsedResults handleArguments(HashMap<String, ArrayList<String>> args) {
+    //Pattern pattern = Pattern.compile(HTTPClient.GET_ARGS_REGEX, Pattern.CASE_INSENSITIVE);
+    //Matcher matcher = pattern.matcher(args);
     ParsedResults parsedResults = new HTTPClient(). new ParsedResults();
-    while (matcher.find()) {
-      // Get the matching string from command-line arguments
-      String argument = matcher.group();
+
+    //while (matcher.find()) {
+    for (String argument:args.keySet()) {    
       // Check which argument, process accordingly
-      if (argument.contains("http")) {
-        parsedResults.setUrl(argument);
-      } else if (argument.contains("-v")) {
+      if (argument.equals("url") && args.get(argument).size() > 0) {
+        parsedResults.setUrl(args.get(argument).get(0));
+      } else if (argument.equals("-v") && args.get(argument).size() > 0) {
         parsedResults.makeVerbose();
-      } else if (argument.contains("-h")) {
-        String keyValue = argument.substring(argument.indexOf(" ") + 1);
-        String keyValueArray[] = keyValue.split(":");
-        parsedResults.addHeader(keyValueArray[0], keyValueArray[1]);
-      } else if (argument.contains("-d")) {
-        parsedResults.setInlineData(argument.substring(argument.indexOf(" ") + 1));
-      } else if (argument.contains("-f")) {
-        parsedResults.setFilePath(argument.substring(argument.indexOf(" ") + 1));
-      } else if (argument.contains("-o")) {
-        parsedResults.setOutputFilePath(argument.substring(argument.indexOf(" ") + 1));
+      } else if (argument.equals("-h") && args.get(argument).size() > 0) {
+        for (String keyValue: args.get(argument)) {
+          String keyValueArray[] = keyValue.split(":");
+          parsedResults.addHeader(keyValueArray[0], keyValueArray[1]);
+        }
+      } else if (argument.equals("-d") && args.get(argument).size() > 0) {
+        parsedResults.setInlineData(args.get(argument).get(0));
+      } else if (argument.equals("-f") && args.get(argument).size() > 0) {
+        parsedResults.setFilePath(args.get(argument).get(0));
+      } else if (argument.equals("-o") && args.get(argument).size() > 0) {
+        parsedResults.setOutputFilePath(args.get(argument).get(0));
       }
     }
 
@@ -256,6 +298,8 @@ class HTTPClient {
       System.out.println(POST_HELP);
     } else if (helpCommand.equals("help")) {
       System.out.println(COMPLETE_HELP);
+    } else {
+      System.out.println("Unknown help command...");
     }
   }
 
