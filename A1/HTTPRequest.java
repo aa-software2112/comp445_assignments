@@ -155,13 +155,14 @@ class HTTPRequest {
     // to be processed and have it set the headesrs & body internally.
     HTTPResponse responseObj = new HTTPResponse();
     responseObj.setHeaders(header.toString())
-      .setBody(body.toString());
+      .setBody(body.toString())
+      .setAssociatedRequest(message.toString());
 
     String redirectUrl = null;
     if ((redirectUrl = this.checkForRedirect(header.toString())) != null && this.allowedRedirects > 0) {
       URL url = null;
       try {
-        url = new URL("http://" + redirectUrl);
+        url = new URL((redirectUrl.startsWith("http://") ? redirectUrl : "http://" + redirectUrl));
         System.out.println("Redirecting to " + redirectUrl);
         // The path and query url should not be of the redirect link (it won't be there), it should be
         // within the original query. For now, we will keep it with the Location: value only, and will not use 

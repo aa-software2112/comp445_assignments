@@ -152,23 +152,8 @@ class HTTPClient {
       return null;
     }
 
-    // Custom combination of arguments
-    // Integer nargs = args.length;
-    // String fullCommand = String.join(" ", args);
-
-    // Pattern pattern = Pattern.compile(COMMAND_REGEX, Pattern.CASE_INSENSITIVE);
-    // Matcher matcher = pattern.matcher(fullCommand);
-
-    // // Looking for 2 groups
-    // if(nargs == 0 || (matcher.find() && matcher.groupCount() != 2)) {
-    //   System.out.println(INVALID_INPUT);
-    //   return null;
-    // }
-
     // Contains the "command" to execute, followed by the arguments of that command
     String command = String.join(" ", commandSet);
-    // String command = matcher.group(1).toLowerCase();
-    // String commandArgs = matcher.group(2);
 
     // Is a help command
     if (command.contains("help")) {
@@ -243,6 +228,8 @@ class HTTPClient {
         try {
           PrintWriter writer = new PrintWriter (new File(outputPath));
           if (results.isVerbose()) {
+            writer.println(response.getAssociatedRequest());
+            writer.println("***");
             writer.println(response.getHeaders());
           }
           writer.println(response.getBody());
@@ -255,6 +242,8 @@ class HTTPClient {
       } else { // Display it on console
         System.out.println();
         if (results.isVerbose()) {
+          System.out.println(response.getAssociatedRequest());
+          System.out.println("***");
           System.out.println(response.getHeaders());
         }
         System.out.println(response.getBody());
