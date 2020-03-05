@@ -12,11 +12,28 @@ import java.util.regex.*;
 import java.io.PrintWriter;
 import java.io.BufferedReader;
 import java.io.FileReader;
+import java.io.FileNotFoundException;
 
 public class driver {
 
     private static String searchPath = ".";
     private static String PATH_TO_FILE_REGEX = "([\\d\\w]+\\.?(\\w+))";
+
+    private static boolean pathAllowed(String path) {
+        int backslashCount = 0;
+        int forwardSlashCount = 0;
+
+        // Count the number of forward or backslashes
+        for(int i = 0; i<path.length(); i++) {
+            char c = path.charAt(i);
+            if (c == '/') {
+                forwardSlashCount++;
+            } else if (c == '\\') {
+                backslashCount++;
+            }
+        }
+        return !(backslashCount > 0 || forwardSlashCount > 1);
+    }
 
     /**
      returns a list of the current files in the data directory. You can return different
@@ -41,6 +58,8 @@ public class driver {
             } else if (method.equals("POST")) {
                 // Path will be passed directly to function, it will deal with invalid formats
                 response = driver.createFile(path, method, params, headers, body);
+            } else {
+                response = HTTPResponseGenerator.make().badRequest().setBody("Server only supports GET or POST").get();
             }
 
             System.out.println(String.format("%s %s %s %s %s", path, method, params, headers, body));
@@ -98,7 +117,7 @@ public class driver {
                         .asHtml()
                         .ok();
                 } else {
-                    response.badRequest();
+                    response.badRequest().setBody("Failed to include proper Accept type. Types supported: application/json, application/xml, text/html... You sent " + acceptType);
                 }
             } else {
                 response.setBody(String.join("\n", fileNames))
@@ -116,16 +135,20 @@ public class driver {
         String body) {
             
             HTTPResponseGenerator response = HTTPResponseGenerator.make();
+            if (!pathAllowed(path)) {
+                return response.badRequest().setBody(String.format("The path specified by %s is invalid\nPlease keep paths within current directory", path)).get();
+            }
+
             File requestFile = new File(path);
             try {
                 PrintWriter w = new PrintWriter("." + requestFile);
                 w.write(body);
                 w.flush();
                 w.close();
-                response.ok();
-            } catch(Exception e) {
-                response.badRequest().setBody("Error writing to file...\n" + e);
-            }
+                response.ok().setBody(String.format("Wrote %d bytes to file %s", body.length(), requestFile.getName()));
+            } catch(FileNotFoundException f) {
+                response.notFound().setBody(String.format("Could not find file %s\nError = %s", requestFile.getName(), f));
+            } 
             return response.get();
         }
     
