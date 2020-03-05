@@ -36,6 +36,10 @@ public class HTTPResponseGenerator {
         return this.setStatus("404", "Not Found");
     }
 
+    public HTTPResponseGenerator serverError() {
+        return this.setStatus("500", "Internal Server Error");
+    }
+
     public HTTPResponseGenerator setBody(String body) {
         this.body = body;
         return this;

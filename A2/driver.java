@@ -13,6 +13,7 @@ import java.io.PrintWriter;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.FileNotFoundException;
+import java.io.IOException;
 
 public class driver {
 
@@ -35,13 +36,6 @@ public class driver {
         return !(backslashCount > 0 || forwardSlashCount > 1);
     }
 
-    /**
-     returns a list of the current files in the data directory. You can return different
-    type format such as JSON, XML, plain text, HTML according to the Accept key of the
-    Comp445 – Lab Assignment # 2 Page 3
-    header of the request. However, this is not mandatory; you can simply ignore the
-    header value and make your server always returns the same output.
-    */
     public static String clientHandler(String path,
         String method, 
         HashMap<String, String> params, 
@@ -127,7 +121,6 @@ public class driver {
             return response.get();
         }
 
-    
     public static String createFile(String path,
         String method, 
         HashMap<String, String> params, 
@@ -156,27 +149,39 @@ public class driver {
         String method, 
         HashMap<String, String> params, 
         HashMap<String, String> headers,
-        String body) {
+        String body) 
+        {
             
             HTTPResponseGenerator response = HTTPResponseGenerator.make();
+            if (!pathAllowed(path)) {
+                return response.badRequest().setBody(String.format("The path specified by %s is invalid\nPlease keep paths within current directory", path)).get();
+            }
+
             File requestFile = new File(path);
+            BufferedReader w = null;
             try {
-                BufferedReader w = new BufferedReader(new FileReader("." + requestFile));
+                w = new BufferedReader(new FileReader("." + requestFile));
                 StringBuilder b = new StringBuilder();
                 String line = null;
                 while( (line = w.readLine()) != null ) {
                     b.append(line);
                 }
-                w.close();
                 response.setBody(b.toString()).ok();
-            } catch(Exception e) {
-                response.badRequest().setBody("Error reading from file...\n" + e);
+            } catch(FileNotFoundException e) {
+                response.notFound().setBody(String.format("File %s could not be found\nError = %s", path, e));
+            } catch(IOException io) {
+                response.serverError().setBody(String.format("Failed during reading of file stream %s\nError = %s", path, io));
+            } finally {
+                try {
+                    if (w != null)
+                        w.close();
+                } catch(IOException ioclose) {
+                    // This is OK
+                    System.out.println("Failed to close file");
+                }
             }
             return response.get();
         }
-    
-    
-    
     
     public static void main(String[] args) {
         HTTPServer s = new HTTPServer(8080);
