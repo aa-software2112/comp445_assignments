@@ -14,11 +14,16 @@ import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+// Reentrant lock
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock.ReadLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock.WriteLock;
 
 public class driver {
 
     private static String searchPath = ".";
     private static String PATH_TO_FILE_REGEX = "([\\d\\w]+\\.?(\\w+))";
+    public static HashMap<String, ReentrantReadWriteLock> fileLocks = new HashMap<String, ReentrantReadWriteLock>();
 
     private static boolean pathAllowed(String path) {
         int backslashCount = 0;
@@ -56,8 +61,7 @@ public class driver {
                 response = HTTPResponseGenerator.make().badRequest().setBody("Server only supports GET or POST").get();
             }
 
-            System.out.println(String.format("%s %s %s %s %s", path, method, params, headers, body));
-            System.out.println(response);
+            System.out.println(String.format("\n****\n{%s %s %s %s %s}\n****response**** \n%s\n****", path, method, params, headers, body, response));
             return response;
         }
 
@@ -132,7 +136,17 @@ public class driver {
                 return response.badRequest().setBody(String.format("The path specified by %s is invalid\nPlease keep paths within current directory", path)).get();
             }
 
+            WriteLock wl = null;
+            synchronized(fileLocks) {
+                if (!fileLocks.containsKey(path)) {
+                    fileLocks.put(path, new ReentrantReadWriteLock());
+                }
+                wl = fileLocks.get(path).writeLock();
+            }
+
             File requestFile = new File(path);
+            wl.lock();
+            System.out.println(String.format("Writing %s...", path));
             try {
                 PrintWriter w = new PrintWriter("." + requestFile);
                 w.write(body);
@@ -142,6 +156,8 @@ public class driver {
             } catch(FileNotFoundException f) {
                 response.notFound().setBody(String.format("Could not find file %s\nError = %s", requestFile.getName(), f));
             } 
+            System.out.println(String.format("Exiting Write Block %s...", path));
+            wl.unlock();
             return response.get();
         }
     
@@ -157,8 +173,19 @@ public class driver {
                 return response.badRequest().setBody(String.format("The path specified by %s is invalid\nPlease keep paths within current directory", path)).get();
             }
 
+            ReadLock rl = null;
+            synchronized(fileLocks) {
+                if (!fileLocks.containsKey(path)) {
+                    fileLocks.put(path, new ReentrantReadWriteLock());
+                }
+                rl = fileLocks.get(path).readLock();
+            }
+
             File requestFile = new File(path);
             BufferedReader w = null;
+            rl.lock();
+            System.out.println(String.format("Reading %s...", path));
+            System.out.println("\t# of readers = " + fileLocks.get(path).getReadLockCount());
             try {
                 w = new BufferedReader(new FileReader("." + requestFile));
                 StringBuilder b = new StringBuilder();
@@ -180,6 +207,10 @@ public class driver {
                     System.out.println("Failed to close file");
                 }
             }
+            System.out.println(String.format("\tFinished Reading %s...", path));
+            rl.unlock();
+            System.out.println(String.format("\t# remaining readers = %d", fileLocks.get(path).getReadLockCount()));
+
             return response.get();
         }
     

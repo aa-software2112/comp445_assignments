@@ -13,7 +13,7 @@ public class HTTPServer extends Thread {
     private Integer listeningPort;
     private Method handler;
     private RequestQueue requestManager;
-    private static final Integer SERVER_REQUEST_CAPACITY = 10;
+    private static final Integer SERVER_REQUEST_CAPACITY = 4;
 
     public static Class[] HandlerInterface = 
     {
@@ -159,6 +159,7 @@ public class HTTPServer extends Thread {
             } catch(IOException e) {
                 System.out.println("Falied to read client socket ... " + e);
             } finally {
+                
                 try {
                     HTTPServer.this.requestManager.completeRequest(this);
                     this.closeRequest();
