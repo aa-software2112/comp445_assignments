@@ -4,6 +4,7 @@ import java.lang.StringBuilder;
 import java.util.*;
 import java.util.regex.*;
 import java.lang.reflect.Method;
+import java.lang.reflect.*;
 
 public class HTTPServer extends Thread {
     private ServerSocket httpServer;
@@ -95,7 +96,7 @@ public class HTTPServer extends Thread {
                     return; // jumps to finally
                 }
 
-                // Continuously parse headers until \r\n line
+                // Continuously parse headers until blank \r\n line
                 boolean headerFailure = false;
                 boolean headersComplete = false;
                 while(!headerFailure && !headersComplete) { 
@@ -125,11 +126,17 @@ public class HTTPServer extends Thread {
                    }
                 }
 
+                // Handle the request
                 try {
-                    HTTPServer.this.handler.invoke(null, this.path, this.method, this.params, this.headers, this.body);
-                }catch(Exception e) {
+                    String response = (String)HTTPServer.this.handler.invoke(null, this.path, this.method, this.params, this.headers, this.body);
+                    this.clientInput.write(response);
+                    this.clientInput.flush();
+                }catch(InvocationTargetException e) {
                     System.out.println("Could not invoke method " + HTTPServer.this.handler.getName());
-                    System.out.println(e);
+                    System.out.println(e.getTargetException());
+                    return;
+                } catch(IllegalAccessException a) {
+                    System.out.println(a);
                     return;
                 }
 
@@ -154,12 +161,17 @@ public class HTTPServer extends Thread {
             }
 
             this.method = matcher.group(1);
-            this.path = matcher.group(2);
+            String originalPath = matcher.group(2);
+            if (originalPath.indexOf("?") != -1) { // Remove the query string from path if exists
+                this.path = originalPath.split("\\?")[0];
+            } else {
+                this.path = originalPath;
+            }
             this.version = matcher.group(3);
 
             // Attempt query string parsing
             pattern = Pattern.compile(QUERY_PARAMS_REGEX, Pattern.CASE_INSENSITIVE);
-            matcher = pattern.matcher(this.path);
+            matcher = pattern.matcher(originalPath);
             while(matcher.find()) {
                 this.params.put(matcher.group(1), matcher.group(2));
             }
@@ -183,8 +195,8 @@ public class HTTPServer extends Thread {
 
         private boolean readBody() {
              if (this.headers.containsKey("content-length")) {
-                Integer lengthToRead = -1;
-                Integer bytesRead = -1;
+                int lengthToRead = -1;
+                int bytesRead = -1;
 
                 // Fetch the content-length
                 try {
@@ -204,7 +216,9 @@ public class HTTPServer extends Thread {
                 }
 
                 // Failed to read the full body
-                if (bytesRead != lengthToRead) {
+                System.out.println(bytesRead);
+                System.out.println(lengthToRead);
+                if (!(bytesRead == lengthToRead)) {
                     System.out.println(String.format("Bytes read %d doesn't match content-length %d", bytesRead, lengthToRead));
                     return false;
                 }
