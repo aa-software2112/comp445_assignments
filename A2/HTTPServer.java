@@ -5,11 +5,16 @@ import java.util.*;
 import java.util.regex.*;
 import java.lang.reflect.Method;
 import java.lang.reflect.*;
+import java.util.LinkedList;
 
 public class HTTPServer extends Thread {
+    private static Integer requestCounter = 0;
     private ServerSocket httpServer;
     private Integer listeningPort;
     private Method handler;
+    private RequestQueue requestManager;
+    private static final Integer SERVER_REQUEST_CAPACITY = 10;
+
     public static Class[] HandlerInterface = 
     {
         String.class,
@@ -22,6 +27,8 @@ public class HTTPServer extends Thread {
     public HTTPServer(Integer port) {
         this.listeningPort = port;
         this.handler = null;
+        this.requestManager = new RequestQueue(SERVER_REQUEST_CAPACITY);
+        this.requestManager.start();
     }
 
     public void registerHandler(Method toExecute) {
@@ -49,7 +56,9 @@ public class HTTPServer extends Thread {
                 BufferedReader clientOutput = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
                 System.out.println("Received connection from " + clientSocket);
                 HandleClientRequests newRequest = new HandleClientRequests(clientInput, clientOutput, clientSocket);
-                newRequest.start();
+                if(!this.requestManager.addRequest(newRequest)) {
+                    newRequest.dropRequest("Exceeded TCP connection limit... Try resending");
+                }
             } catch (IOException e) {
                 System.out.println(e);
                 System.exit(0);
@@ -58,6 +67,7 @@ public class HTTPServer extends Thread {
     }
 
     class HandleClientRequests extends Thread {
+        private Integer requestId;
         private PrintWriter clientInput;
         private BufferedReader clientOutput;
         private Socket clientSocket;
@@ -73,6 +83,8 @@ public class HTTPServer extends Thread {
         private String body;
 
         HandleClientRequests(PrintWriter ci, BufferedReader co, Socket cs) {
+            HTTPServer.requestCounter++;
+            this.requestId = HTTPServer.requestCounter;
             this.clientInput = ci;
             this.clientOutput = co;
             this.clientSocket = cs;
@@ -82,6 +94,10 @@ public class HTTPServer extends Thread {
             this.path = new String();
             this.version = new String();
             this.body = new String();
+        }
+
+        public Integer getRequestId() {
+            return this.requestId;
         }
 
         public void run() {
@@ -144,8 +160,9 @@ public class HTTPServer extends Thread {
                 System.out.println("Falied to read client socket ... " + e);
             } finally {
                 try {
-                    this.clientSocket.close();
-                } catch(IOException q) {
+                    HTTPServer.this.requestManager.completeRequest(this);
+                    this.closeRequest();
+                } catch(Exception q) {
                     System.out.println(q);
                 }
             }
@@ -229,7 +246,83 @@ public class HTTPServer extends Thread {
                 return true;
              }
         }
+
+        public void dropRequest(String msg) {
+            this.clientInput.write(HTTPResponseGenerator.make()
+                                    .bandwidthError()
+                                    .setBody(String.format("TCP connection dropped\n%s", msg)).get());
+            this.clientInput.flush();
+            try {
+                this.closeRequest();
+            } catch(Exception e) {
+                System.out.println(e);
+            }
+        }
+
+        public void closeRequest() throws Exception {
+            this.clientInput.close();
+            this.clientOutput.close();
+            this.clientSocket.close();
+        }
     }
 
+    class RequestQueue extends Thread {
+        LinkedList<HandleClientRequests> requestQueue;
+        HashMap<Integer, HandleClientRequests> runningRequests;
+        Integer serverConnectionCapacity;
 
+        RequestQueue(Integer serverCapacity) {
+            this.serverConnectionCapacity = serverCapacity;
+            this.requestQueue = new LinkedList<HandleClientRequests>();
+            this.runningRequests = new HashMap<Integer, HandleClientRequests>();
+        }
+
+        public void run() {
+            synchronized(requestQueue) {
+                while(true) {
+                        
+                    try {
+                        requestQueue.wait();
+                    } catch(Exception e){
+                        System.out.println(e);
+                    }
+
+                    // Check how many threads are running
+                    // If == capacity: go back to sleep
+                    // If < capacity, begin removing from queue, starting, and putting into runningRequests
+                    synchronized(runningRequests) {
+                        Integer noCurrentlyRunning = runningRequests.size();
+                        while (noCurrentlyRunning < this.serverConnectionCapacity && this.requestQueue.size() > 0) {
+                            HandleClientRequests waitingRequest = this.requestQueue.pop();
+                            this.runningRequests.put(waitingRequest.getRequestId(), waitingRequest);
+                            waitingRequest.start();
+                            noCurrentlyRunning++;
+                        }
+                    }
+                    
+                }
+            }
+        }
+
+        public boolean addRequest(HandleClientRequests r) {
+            synchronized(requestQueue) {
+                if (requestQueue.size() >= this.serverConnectionCapacity) {
+                    return false;
+                } else {
+                    this.requestQueue.addLast(r);
+                    this.requestQueue.notify();
+                    return true;
+                }
+            }
+        }
+
+        public void completeRequest(HandleClientRequests r) {
+            synchronized(runningRequests) {
+                this.runningRequests.remove(r.getRequestId());
+            }
+            synchronized(requestQueue) {
+                this.requestQueue.notify();
+            }
+        }
+    }
 }

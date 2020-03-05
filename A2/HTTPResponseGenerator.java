@@ -40,6 +40,10 @@ public class HTTPResponseGenerator {
         return this.setStatus("500", "Internal Server Error");
     }
 
+    public HTTPResponseGenerator bandwidthError() {
+        return this.setStatus("509", "Bandwidth Limit Exceeded");
+    }
+
     public HTTPResponseGenerator setBody(String body) {
         this.body = body;
         return this;
