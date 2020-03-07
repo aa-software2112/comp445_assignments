@@ -8,7 +8,7 @@ public class GET extends HTTPRequest {
     URL url = null;
     try {
       url = new URL(urlString);
-      return new GET(url.getHost(), url.getPath() + (url.getQuery() == null ? "" : "?" + url.getQuery()), 8080);
+      return new GET(url.getHost(), url.getPath() + (url.getQuery() == null ? "" : "?" + url.getQuery()), 8088);
     } catch( Exception e) {
       System.out.println("Failed to create GET request in GET.makeRequest(...)");
       return null;

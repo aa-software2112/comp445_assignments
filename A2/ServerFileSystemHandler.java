@@ -19,12 +19,21 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock.ReadLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock.WriteLock;
 
-public class driver {
+public class ServerFileSystemHandler {
 
     private static String searchPath = ".";
     private static String PATH_TO_FILE_REGEX = "([\\d\\w]+\\.?(\\w+))";
     public static HashMap<String, ReentrantReadWriteLock> fileLocks = new HashMap<String, ReentrantReadWriteLock>();
+    private static boolean verbose = false;
 
+    public static void setVerbose(boolean v) {
+      verbose = v;
+    }
+
+    public static void setPath(String p) {
+      searchPath = p;
+    }
+    
     private static boolean pathAllowed(String path) {
         int backslashCount = 0;
         int forwardSlashCount = 0;
@@ -41,6 +50,27 @@ public class driver {
         return !(backslashCount > 0 || forwardSlashCount > 1);
     }
 
+    private static void displayFullMessage(String path,
+    String method, 
+    HashMap<String, String> params, 
+    HashMap<String, String> headers,
+    String body,
+    String response) {
+      if (!verbose) return;
+      System.out.println(String.format("\n|***************|" +
+      "\n" +
+      "{%s %s %s %s %s}" +
+      "\n\n" +
+      "%s" +
+      "\n" +
+      "|**************|", path, method, params, headers, body, response));
+
+    }
+
+    private static void display(String msg) {
+      if (!verbose) return;
+    }
+
     public static String clientHandler(String path,
         String method, 
         HashMap<String, String> params, 
@@ -50,18 +80,17 @@ public class driver {
             String response = null;
             if (method.equals("GET")) {
                 if (path.equals("/")) {
-                    response = driver.listDirectory(path, method, params, headers, body);
+                    response = ServerFileSystemHandler.listDirectory(path, method, params, headers, body);
                 } else {
-                    response = driver.getFile(path, method, params, headers, body);
+                    response = ServerFileSystemHandler.getFile(path, method, params, headers, body);
                 }
             } else if (method.equals("POST")) {
                 // Path will be passed directly to function, it will deal with invalid formats
-                response = driver.createFile(path, method, params, headers, body);
+                response = ServerFileSystemHandler.createFile(path, method, params, headers, body);
             } else {
                 response = HTTPResponseGenerator.make().badRequest().setBody("Server only supports GET or POST").get();
             }
-
-            System.out.println(String.format("\n****\n{%s %s %s %s %s}\n****response**** \n%s\n****", path, method, params, headers, body, response));
+            displayFullMessage(path, method, params, headers, body, response);
             return response;
         }
 
@@ -73,12 +102,12 @@ public class driver {
         {
             HTTPResponseGenerator response = HTTPResponseGenerator.make();
 
-            File curDir = new File(driver.searchPath);
+            File curDir = new File(ServerFileSystemHandler.searchPath);
             File[] dirFiles = curDir.listFiles();
             ArrayList<String> fileNames = new ArrayList<String>(dirFiles.length);
             for(File nextfile: dirFiles) {
                 fileNames.add(nextfile.getName());
-                System.out.println(nextfile.getName());
+                display(nextfile.getName());
             }
             
             String responseBody = null;
@@ -144,11 +173,11 @@ public class driver {
                 wl = fileLocks.get(path).writeLock();
             }
 
-            File requestFile = new File(path);
+            File requestFile = new File(searchPath + path);
             wl.lock();
-            System.out.println(String.format("Writing %s...", path));
+            display(String.format("Writing %s...", path));
             try {
-                PrintWriter w = new PrintWriter("." + requestFile);
+                PrintWriter w = new PrintWriter(requestFile);
                 w.write(body);
                 w.flush();
                 w.close();
@@ -156,7 +185,7 @@ public class driver {
             } catch(FileNotFoundException f) {
                 response.notFound().setBody(String.format("Could not find file %s\nError = %s", requestFile.getName(), f));
             } 
-            System.out.println(String.format("Exiting Write Block %s...", path));
+            display(String.format("Exiting Write Block %s...", path));
             wl.unlock();
             return response.get();
         }
@@ -181,13 +210,13 @@ public class driver {
                 rl = fileLocks.get(path).readLock();
             }
 
-            File requestFile = new File(path);
+            File requestFile = new File(searchPath + path);
             BufferedReader w = null;
             rl.lock();
-            System.out.println(String.format("Reading %s...", path));
-            System.out.println("\t# of readers = " + fileLocks.get(path).getReadLockCount());
+            display(String.format("Reading %s...", path));
+            display("\t# of readers = " + fileLocks.get(path).getReadLockCount());
             try {
-                w = new BufferedReader(new FileReader("." + requestFile));
+                w = new BufferedReader(new FileReader(requestFile));
                 StringBuilder b = new StringBuilder();
                 String line = null;
                 while( (line = w.readLine()) != null ) {
@@ -207,26 +236,10 @@ public class driver {
                     System.out.println("Failed to close file");
                 }
             }
-            System.out.println(String.format("\tFinished Reading %s...", path));
+            display(String.format("\tFinished Reading %s...", path));
             rl.unlock();
-            System.out.println(String.format("\t# remaining readers = %d", fileLocks.get(path).getReadLockCount()));
+            display(String.format("\t# remaining readers = %d", fileLocks.get(path).getReadLockCount()));
 
             return response.get();
         }
-    
-    public static void main(String[] args) {
-        HTTPServer s = new HTTPServer(8080);
-        try {
-            s.registerHandler(driver.class.getMethod("clientHandler", HTTPServer.HandlerInterface));
-        } catch(Exception r) {
-            System.out.println(r);
-            System.exit(0);
-        }
-        s.start();
-        try {
-            s.join();
-        } catch(Exception e) {
-            System.out.println(e);
-        }
-    }
 }

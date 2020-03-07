@@ -7,7 +7,7 @@ public class POST extends HTTPRequest {
     URL url = null;
     try {
       url = new URL(urlString);
-      return new POST(url.getHost(), url.getPath() + (url.getQuery() == null ? "" : "?" + url.getQuery()), 8080);
+      return new POST(url.getHost(), url.getPath() + (url.getQuery() == null ? "" : "?" + url.getQuery()), 8088);
     } catch( Exception e) {
       System.out.println("Failed to create POST request in POST.make(...) " + e);
       return null;

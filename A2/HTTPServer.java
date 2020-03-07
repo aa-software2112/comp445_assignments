@@ -13,7 +13,7 @@ public class HTTPServer extends Thread {
     private Integer listeningPort;
     private Method handler;
     private RequestQueue requestManager;
-    private static final Integer SERVER_REQUEST_CAPACITY = 4;
+    private static final Integer SERVER_REQUEST_CAPACITY = 50;
 
     public static Class[] HandlerInterface = 
     {
@@ -29,11 +29,11 @@ public class HTTPServer extends Thread {
         this.handler = null;
         this.requestManager = new RequestQueue(SERVER_REQUEST_CAPACITY);
         this.requestManager.start();
+        System.out.println("\tServer supports " + SERVER_REQUEST_CAPACITY + " TCP connections");
     }
 
     public void registerHandler(Method toExecute) {
         this.handler = toExecute;
-        System.out.println(this.handler.getParameterCount());
     }
 
     public void run() {
@@ -48,16 +48,16 @@ public class HTTPServer extends Thread {
         }
                 
         // Keep accepting client requests
+        int connectionsDropped = 0;
         while(true) {
             try{
-                System.out.println("Awaiting connections over port " + this.listeningPort);
                 Socket clientSocket = httpServer.accept(); // Blocking call
                 PrintWriter clientInput = new PrintWriter(clientSocket.getOutputStream(), true);
                 BufferedReader clientOutput = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-                System.out.println("Received connection from " + clientSocket);
                 HandleClientRequests newRequest = new HandleClientRequests(clientInput, clientOutput, clientSocket);
                 if(!this.requestManager.addRequest(newRequest)) {
                     newRequest.dropRequest("Exceeded TCP connection limit... Try resending");
+                    System.out.println("\tConnections Dropped: " + (++connectionsDropped));
                 }
             } catch (IOException e) {
                 System.out.println(e);
@@ -220,7 +220,7 @@ public class HTTPServer extends Thread {
                 try {
                     lengthToRead = Integer.parseInt(this.headers.get("content-length"));
                 } catch(NumberFormatException invalidIntegerString) { // Content-length is invalid!
-                    System.out.println(invalidIntegerString);
+                    //System.out.println(invalidIntegerString);
                     return false;
                 }
 
@@ -234,10 +234,7 @@ public class HTTPServer extends Thread {
                 }
 
                 // Failed to read the full body
-                System.out.println(bytesRead);
-                System.out.println(lengthToRead);
                 if (!(bytesRead == lengthToRead)) {
-                    System.out.println(String.format("Bytes read %d doesn't match content-length %d", bytesRead, lengthToRead));
                     return false;
                 }
 
