@@ -1,4 +1,5 @@
 import java.util.*;
+import java.text.*;
 
 public class HTTPResponseGenerator {
 
@@ -12,6 +13,13 @@ public class HTTPResponseGenerator {
         this.reason = null;
         this.body = null;
         this.headers = new HashMap<String, String>();
+        this.headers.put("Date", getDate());
+        this.headers.put("Server", "COMP445FileServerV1");
+    }
+
+    public String getDate() {
+        SimpleDateFormat f = new SimpleDateFormat("EEE, d MMM yyyy HH:mm:ss z");
+        return f.format(new Date());
     }
 
     public static HTTPResponseGenerator make() {
@@ -68,6 +76,10 @@ public class HTTPResponseGenerator {
 
     public HTTPResponseGenerator asText() {
         return this.addHeader("Content-Type", "text/plain");
+    }
+
+    public HTTPResponseGenerator addContentDisposition(String filename) {
+        return this.addHeader("Content-Disposition", "attachment; filename=" + filename.replace("/", ""));
     }
 
     public String get() {

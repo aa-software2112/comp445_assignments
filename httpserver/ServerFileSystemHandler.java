@@ -69,6 +69,7 @@ public class ServerFileSystemHandler {
 
     private static void display(String msg) {
       if (!verbose) return;
+      System.out.println(msg);
     }
 
     public static String clientHandler(String path,
@@ -222,7 +223,7 @@ public class ServerFileSystemHandler {
                 while( (line = w.readLine()) != null ) {
                     b.append(line);
                 }
-                response.setBody(b.toString()).ok();
+                response.setBody(b.toString()).addContentDisposition(path).ok();
             } catch(FileNotFoundException e) {
                 response.notFound().setBody(String.format("File %s could not be found\nError = %s", path, e));
             } catch(IOException io) {

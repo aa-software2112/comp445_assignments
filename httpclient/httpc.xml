@@ -2,8 +2,8 @@
 <launch4jConfig>
   <dontWrapJar>false</dontWrapJar>
   <headerType>console</headerType>
-  <jar>C:\Users\Anthony Andreoli\Desktop\Concordia\2020 - WINTER\COMP 445\comp445_assignments\A1\httpc.jar</jar>
-  <outfile>C:\Users\Anthony Andreoli\Desktop\Concordia\2020 - WINTER\COMP 445\comp445_assignments\A1\httpc.exe</outfile>
+  <jar>C:\Users\Anthony Andreoli\Desktop\Concordia\2020 - WINTER\COMP 445\comp445_assignments\httpclient\httpc.jar</jar>
+  <outfile>C:\Users\Anthony Andreoli\Desktop\Concordia\2020 - WINTER\COMP 445\comp445_assignments\httpclient\httpc.exe</outfile>
   <errTitle></errTitle>
   <cmdLine></cmdLine>
   <chdir>.</chdir>
