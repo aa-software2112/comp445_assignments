@@ -5,18 +5,19 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
 public class UDPSenderReceiver extends Thread {
 
   private DatagramSocket socket;
-  private LinkedBlockingQueue<DatagramPacket> datagramsReceived;
+  private ConcurrentLinkedQueue<DatagramPacket> datagramsReceived;
 
   UDPSenderReceiver(Integer port) {
     try {
       socket = new DatagramSocket(null);
       socket.bind(new InetSocketAddress("localhost", port));
-      this.datagramsReceived = new LinkedBlockingQueue<DatagramPacket>();
+      this.datagramsReceived = new ConcurrentLinkedQueue<DatagramPacket>();
     } catch (SocketException e) {
       System.out.println("Error in UDPSenderReceiver constructor... " + e);
       System.exit(1);
@@ -33,24 +34,12 @@ public class UDPSenderReceiver extends Thread {
   public void run() {
 
     while (true) {
-      DatagramPacket readPacket = new DatagramPacket(this.newBytes(), Packet.MAX_PAYLOAD_SIZE);
+      byte newBuff[] = this.newBytes();
+      DatagramPacket readPacket = new DatagramPacket(newBuff, newBuff.length);
 
       try {
         this.socket.receive(readPacket);
         this.store(readPacket);
-        /* System.out.printf("Received message FROM: %s PORT: %d\n", readPacket.getAddress(), readPacket.getPort());
-
-        Packet p = PacketFactory.rebuild(readPacket.getData());
-        System.out.println(p); 
-        if (p.isAck()) {
-          System.out.println("Acknowledgement!");
-        } else {
-          System.out.println("Sending ACK");
-          Packet a = p.generateAck();
-          this.send(readPacket.getPort(), a.getBytes());
-        }
-          */
-
       } catch (Exception e) {
         System.out.println(e);
         break;
@@ -59,10 +48,9 @@ public class UDPSenderReceiver extends Thread {
   }
   
   private void store(DatagramPacket receivedDatagram) {
-    try {
-      this.datagramsReceived.put(receivedDatagram);
-    } catch(InterruptedException e) {
-      System.out.println("Failed to add packed to queue in .store()... " + e);
+    synchronized (this.datagramsReceived) {
+      this.datagramsReceived.add(receivedDatagram);
+      this.datagramsReceived.notify();
     }
   }
 
@@ -86,7 +74,12 @@ public class UDPSenderReceiver extends Thread {
 
   public DatagramPacket getDatagram() {
     try {
-      return this.datagramsReceived.take();
+      synchronized (this.datagramsReceived) {
+        while (this.datagramsReceived.isEmpty()) {
+          this.datagramsReceived.wait();
+        }
+      }
+      return this.datagramsReceived.poll();
     } catch (InterruptedException i) {
       System.out.println("Error getting datagram in .getDatagram()... " + i);
       return null;
@@ -95,7 +88,7 @@ public class UDPSenderReceiver extends Thread {
 
 
   private byte[] newBytes() {
-    return new byte[Packet.MAX_PAYLOAD_SIZE];
+    return new byte[Packet.MAX_PACKET_SIZE];
   } 
 
   public void close() {

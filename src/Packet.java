@@ -15,7 +15,8 @@ public class Packet {
   protected String peerAddress;
   protected Integer port;
   protected String payload;
-  protected byte[] bytePacket; 
+  protected byte[] bytePacket;
+  
   
   protected Packet(PACKET_TYPE t, Integer seq, String peerAddr, Integer port, String payload) {
     this.packetType = t;
@@ -153,6 +154,10 @@ public class Packet {
     return this.bytePacket;
   }
 
+  public String getPayload() {
+    return this.payload;
+  }
+
   public String toString() {
     System.out.println("***** STRING  VERSION *****");
     System.out.println("PTYPE: " + this.packetType.name());
@@ -178,4 +183,39 @@ public class Packet {
   public boolean isAck() {
     return this.packetType == PACKET_TYPE.ACK;
   }
+
+  public boolean isSyn() {
+    return this.packetType == PACKET_TYPE.SYN;
+  }
+
+  public boolean isSynAck() {
+    return this.packetType == PACKET_TYPE.SYN_ACK;
+  }
+
+  public boolean isFIN() {
+    return this.packetType == PACKET_TYPE.FIN;
+  }
+
+  public PACKET_TYPE getType() {
+    return this.packetType;
+  }
+
+  public int getSeqNum() {
+    return this.seqNumber;
+  }
+
+  public void setPayload(String payload) {
+    if (payload.length() > Packet.MAX_PAYLOAD_SIZE) {
+      throw new RuntimeException(String.format("Payload %s too large! [Len = %d]", payload, payload.length()));
+    }
+    this.copyStr(payload, this.bytePacket, 11); // Adds payload @ offset 11
+    this.payload = payload;
+  }
+
+  public void setSequenceNumber(Integer seqNum) {
+    byte[] seq = this.toBigEndian(seqNum, 4); // Takes up 4 bytes (at most)
+    this.copyBytes(seq, bytePacket, 1); // Adds 4-bytes SEQ # @ offset 1
+    this.seqNumber = seqNum;
+  }
+
 }

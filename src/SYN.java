@@ -9,7 +9,7 @@ public class SYN extends Packet {
     super(packetData);
   }
 
-  public ACK generateAck() {
-    return new ACK(this);
+  public SYNACK generateAck() {
+    return new SYNACK(this);
   }
 }

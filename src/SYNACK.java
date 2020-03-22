@@ -8,7 +8,12 @@ public class SYNACK extends Packet {
   public SYNACK(byte[] packetData) {
     super(packetData);
   }
-  
+
+  /** This is not a copy constructor - it generates a SYNACK for the passed SYN Packet */
+  public SYNACK(SYN toAck) {
+    this(toAck.seqNumber, toAck.peerAddress, toAck.port);
+  }
+
   public ACK generateAck() {
     return new ACK(this);
   }
