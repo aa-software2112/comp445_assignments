@@ -1,5 +1,11 @@
+package SelectiveRepeat;
+
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class driver {
   
@@ -26,8 +32,7 @@ public class driver {
   }
 
   public static String getTestData(String filename) {
-    try
-    {
+    try {
       byte[] f = Files.readAllBytes(Paths.get("sampleRequest.txt"));
       return new String(f);
     } catch (Exception e) {
@@ -35,8 +40,8 @@ public class driver {
       return "";
     }
   }
-
-  public static void main(String[] args) {
+  
+  public static void runCS(String args[]) {
     System.out.println(args[0]);
     int serverPort = 9000; // Server on 9000
     int clientPort = 8999; // Client on 8999
@@ -46,7 +51,9 @@ public class driver {
       ReliablePacketTransfer rtf = new ReliablePacketTransfer(
           udpClient, serverPort);
       test = getTestData("sampleRequest.txt");
-      rtf.applicationSend(test);
+      rtf.sendMessage(test);
+      String clientResponse = rtf.applicationWaitForMsg();
+      System.out.println("Client received server's resposne... " + clientResponse);
       //rtf.handshake();
       try{
         udpClient.join();
@@ -60,14 +67,97 @@ public class driver {
       ReliablePacketTransfer srtf = new ReliablePacketTransfer(
         udpServer, clientPort
       );
-      srtf.applicationListen();
+      srtf.start();
+      String request = srtf.applicationWaitForMsg();
+      // Process request here ... 
+      srtf.applicationRespond(request);
+
+      System.out.println("Driver message received " + request);
        try{
         udpServer.join();
       } catch(Exception e) {
         System.out.println(e);
       }
     }
+  }
+
+  public static void parser() {
+    String data = getTestData("sampleRequest.txt");
+    Queue<String> incoming = new ConcurrentLinkedQueue<String>();
+    //System.out.println("Total data length = " + data.length());
+    int numPackets = (int) Math.ceil(((double) data.length()) / 1013);
+    //System.out.println(numPackets);
+    int i = 0;
+    while (numPackets > 0) {
+      int diff = data.length() - 1013 * (i);
+      int upperBound = diff > 1013 ? 1013 * (i + 1) : 1013*(i) + diff;
+      //System.out.printf("lower %d diff %d upper %d\n", (1013*i), diff, upperBound);
+      incoming.add(data.substring(1013 * i, upperBound));
+      i++;
+      numPackets--;
+    }
+
+    // Starting from here is the code for procesing packets as they arrive
+    Pattern cntLenPat = Pattern.compile("Content-Length:\\s{0,1}(\\d+)", Pattern.CASE_INSENSITIVE);
+    StringBuilder outBuff = new StringBuilder();
+    int pkti = 0;
+    int PAYLOAD_SIZE = 1013;
+    while (true) {
+      String packet = incoming.poll();
+      System.out.println(packet);
+      Matcher matches = cntLenPat.matcher(packet);
+      System.out.println("1");
+      System.out.println(matches);
+      if (matches.find()) { // Content-length exists!
+        System.out.println("2");
+        System.out.println(matches.group(0));
+        int contentLength = Integer.parseInt(matches.group(1));
+
+        // Look for body separator
+        int idxBody = -1;
+        if ((idxBody = packet.indexOf("\r\n\r\n", 0)) != -1) {
+          idxBody += 4; // The start of the body
+
+          if (contentLength + idxBody <= PAYLOAD_SIZE) { // Single packet of body-data
+            outBuff.append(packet.substring(0, idxBody + contentLength));
+            break; // Done
+          } else { // Multiple packets of body-data
+            // Handle initial packet separately
+            System.out.println("Content-length: " + contentLength);
+            outBuff.append(packet.substring(0, PAYLOAD_SIZE));
+            contentLength -= PAYLOAD_SIZE - idxBody;
+            System.out.println("Content-length: " + contentLength);
+
+            while (contentLength != 0) { // Keep reading until all packets received
+              packet = incoming.poll(); // Get next packet
+              System.out.println("New packet with length " + packet.length() + " content length " + contentLength);
+              if (contentLength < PAYLOAD_SIZE) { // Last packet
+                outBuff.append(packet.substring(0, contentLength));
+                contentLength -= contentLength;
+              } else { // middle packet
+                outBuff.append(packet.substring(0, PAYLOAD_SIZE));
+                contentLength -= PAYLOAD_SIZE;
+              }
+            }
+            break;
+          }
+        } else {
+          System.out.println("Invalid message... no body found");
+          break;
+        }
+      } else { // Content-length does not exist! Assumes single-packet message
+        System.out.println("3");
+        outBuff.append(packet);
+        break;
+      }
+    }
+    
+    System.out.println(outBuff.toString());
 
 
+  }
+  public static void main(String[] args) {
+    runCS(args);
+    
   }
 }

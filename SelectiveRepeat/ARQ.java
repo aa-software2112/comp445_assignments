@@ -1,3 +1,4 @@
+package SelectiveRepeat;
 import java.net.DatagramPacket;
 import java.util.HashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -345,9 +346,11 @@ public class ARQ extends Thread {
       // Clear out messages at front of list, passing the responses up to map if it exists
       while (this.ackWindowList.get(0) != null) {
         Packet pd = this.ackWindowList.remove(0);
-        synchronized (this.upperQueue) {
-          this.upperQueue.add(pd.getPayload());
-          this.upperQueue.notify();
+        if (pd.isData()) {
+          synchronized (this.upperQueue) {
+            this.upperQueue.add(pd.getPayload());
+            this.upperQueue.notify();
+          }
         }
         this.ackWindowList.add(null); // Create blank space at end
         this.receivingSequenceNumber++;

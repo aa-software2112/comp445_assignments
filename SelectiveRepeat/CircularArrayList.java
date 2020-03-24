@@ -5,6 +5,7 @@
  * addinging/removing from the ends of the array, in addition to indexing in O(1),
  * which is useful for sequence number indexing.
  */
+package SelectiveRepeat;
 import java.io.Serializable;
 import java.lang.reflect.Array;
 import java.util.AbstractList;

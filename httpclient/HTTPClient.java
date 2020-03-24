@@ -206,7 +206,7 @@ class HTTPClient {
         StringBuilder buffer = new StringBuilder();
 
         while((line = fileContainingBody.readLine()) != null) {
-          buffer.append(line + "\n");
+          buffer.append(line);
         }
         body = buffer.toString();
         request.addToBody(body);

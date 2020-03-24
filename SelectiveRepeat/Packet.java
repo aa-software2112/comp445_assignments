@@ -1,3 +1,5 @@
+package SelectiveRepeat;
+
 import java.net.InetAddress;
 import java.lang.StringBuilder;
 
@@ -196,6 +198,9 @@ public class Packet {
     return this.packetType == PACKET_TYPE.FIN;
   }
 
+  public boolean isData() {
+    return this.packetType == PACKET_TYPE.DATA;
+  }
   public PACKET_TYPE getType() {
     return this.packetType;
   }

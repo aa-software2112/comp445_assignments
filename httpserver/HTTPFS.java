@@ -1,6 +1,5 @@
 import java.io.File;
 import java.util.HashMap;
-
 public class HTTPFS {
     
     private static String COMPLETE_HELP = "\nhttpfs - basic file server\n" +
