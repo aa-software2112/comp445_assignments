@@ -33,7 +33,7 @@ public class driver {
 
   public static String getTestData(String filename) {
     try {
-      byte[] f = Files.readAllBytes(Paths.get("sampleRequest.txt"));
+      byte[] f = Files.readAllBytes(Paths.get("./SelectiveRepeat/sampleRequest.txt"));
       return new String(f);
     } catch (Exception e) {
       System.out.println(e);

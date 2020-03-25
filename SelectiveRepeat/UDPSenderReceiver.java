@@ -15,7 +15,7 @@ public class UDPSenderReceiver extends Thread {
   private DatagramSocket socket;
   private ConcurrentLinkedQueue<DatagramPacket> datagramsReceived;
 
-  UDPSenderReceiver(Integer port) {
+  public UDPSenderReceiver(Integer port) {
     try {
       socket = new DatagramSocket(null);
       socket.bind(new InetSocketAddress("localhost", port));
@@ -26,7 +26,7 @@ public class UDPSenderReceiver extends Thread {
     }
   }
 
-  UDPSenderReceiver() { // Ephemeral port
+  public UDPSenderReceiver() { // Ephemeral port
     this(0);
   }
 

@@ -25,7 +25,7 @@ public class ARQ extends Thread {
 
   // For upper applications to read data
   // Mapping of sequence id -> payload
-  private ConcurrentLinkedQueue<String> upperQueue;
+  private ConcurrentLinkedQueue<Packet> upperQueue;
 
   // For notifying when a SYNACK was received
   private Object synAckMonitor = new Object();
@@ -64,7 +64,7 @@ public class ARQ extends Thread {
 
   }
   
-  private void reset() {
+  protected void reset() {
     this.synAckReceived = false;
     this.finReceived = false;
     this.sendingSequenceNumber = Integer.MIN_VALUE;//(int) (Math.random() * 10) + 1;
@@ -75,7 +75,11 @@ public class ARQ extends Thread {
     }
   }
 
-  public void setExternalQueue(ConcurrentLinkedQueue<String> upperQueue) {
+  protected void instanceReset() {
+    this.reset();
+  }
+
+  public void setExternalQueue(ConcurrentLinkedQueue<Packet> upperQueue) {
     this.upperQueue = upperQueue;
   }
 
@@ -163,8 +167,8 @@ public class ARQ extends Thread {
   }
 
   /** Adds a list of packets to the pre-window queue,
-   * and returns the sequence number of the expected ACK for the first message
-   * in "packets"
+   * and returns the sequence number of the expected ACK for the LAST message in list of packets
+   * Helpful for preventing next steps of reliable message sequence
    */
   private int addPreWindowPackets(Packet packets[]) {
     int ret = this.sendingSequenceNumber;
@@ -175,7 +179,7 @@ public class ARQ extends Thread {
       this.preWindowQueue.notify();
     }
     this.sendingSequenceNumber += packets.length; // Base sequence number doesn't change yet
-    return ret;
+    return this.sendingSequenceNumber;
   }
 
   private int addPreWindowPacket(Packet p) {
@@ -348,7 +352,7 @@ public class ARQ extends Thread {
         Packet pd = this.ackWindowList.remove(0);
         if (pd.isData()) {
           synchronized (this.upperQueue) {
-            this.upperQueue.add(pd.getPayload());
+            this.upperQueue.add(pd);
             this.upperQueue.notify();
           }
         }

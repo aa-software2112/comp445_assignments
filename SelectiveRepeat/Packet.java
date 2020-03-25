@@ -209,6 +209,10 @@ public class Packet {
     return this.seqNumber;
   }
 
+  public int getPort() {
+    return this.port;
+  }
+
   public void setPayload(String payload) {
     if (payload.length() > Packet.MAX_PAYLOAD_SIZE) {
       throw new RuntimeException(String.format("Payload %s too large! [Len = %d]", payload, payload.length()));

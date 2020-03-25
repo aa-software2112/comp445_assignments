@@ -3,6 +3,7 @@ import java.net.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.lang.StringBuilder;
+import SelectiveRepeat.*;
 
 class HTTPRequest {
   private String hostName;
@@ -19,6 +20,12 @@ class HTTPRequest {
   private static final String HTTP_VERSION = "HTTP/1.0";  
   private static final String STATUS_REGEX = "HTTP\\/1.[0-1] (301|302) FOUND";
   private static final String LOCATION_REGEX = "Location: ([^\\s]*)";
+  private boolean asTCP;
+
+  // Remove once testing complete
+  private static final Integer SERVER_PORT = 9000;
+  ReliablePacketTransfer reliable;
+  UDPSenderReceiver udp;
 
   public enum RequestType {
     GET ("GET"),
@@ -44,15 +51,26 @@ class HTTPRequest {
     this.paramString = new StringBuilder();
     this.body = new StringBuilder();
     this.allowedRedirects = 1;
-    try {
-      this.communicationSocket = new Socket(this.hostName, this.port);
-      this.outputWriter =  
-        new PrintWriter(this.communicationSocket.getOutputStream(), true);
-      this.inputReader = 
-        new BufferedReader(new InputStreamReader(this.communicationSocket.getInputStream()));
-    } catch (Exception e) {
-      System.out.println("Error in Request constructor..." + e);
-      System.exit(0);
+    this.asTCP = false;
+    
+    if (!asTCP) {
+      this.udp = new UDPSenderReceiver(); // Ephemeral;
+      udp.start();
+      this.reliable = new ReliablePacketTransfer(
+        udp,
+        SERVER_PORT
+      );
+    } else {
+      try {
+        this.communicationSocket = new Socket(this.hostName, this.port);
+        this.outputWriter =  
+          new PrintWriter(this.communicationSocket.getOutputStream(), true);
+        this.inputReader = 
+          new BufferedReader(new InputStreamReader(this.communicationSocket.getInputStream()));
+      } catch (Exception e) {
+        System.out.println("Error in Request constructor..." + e);
+        System.exit(0);
+      }
     }
   }
 
@@ -113,8 +131,7 @@ class HTTPRequest {
     message.append(String.format("Host: %s", this.hostName) + LSEP);
     
     // Header
-    if (this.headers.length() > 0)
-    {
+    if (this.headers.length() > 0) {
       message.append( this.headers.toString());
     }
 
@@ -126,10 +143,16 @@ class HTTPRequest {
       message.append( this.body.toString());
     }
 
-    // Send the message out
-    this.outputWriter.print(message.toString());
-    this.outputWriter.flush();
-
+    if (!asTCP) {
+      this.reliable.sendMessage(message.toString());
+      String response = this.reliable.applicationWaitForMsg();
+      this.inputReader = new BufferedReader(new StringReader(response));
+    } else {
+      // Send the message out
+      this.outputWriter.print(message.toString());
+      this.outputWriter.flush();
+    }
+    System.out.println("client1");
     String response = null;
     StringBuilder header = new StringBuilder();
     StringBuilder body = new StringBuilder();
@@ -147,16 +170,23 @@ class HTTPRequest {
           header.append(response + "\n");
         }
       } 
-    } catch(Exception e){
+    } catch (Exception e) {
       System.out.println("Could not read input response... " + e);
     }
-
+    
     // TODO: The HTTP Response, later the entire response should be sent to this object
     // to be processed and have it set the headesrs & body internally.
     HTTPResponse responseObj = new HTTPResponse();
     responseObj.setHeaders(header.toString())
       .setBody(body.toString())
-      .setAssociatedRequest(message.toString());
+        .setAssociatedRequest(message.toString());
+
+    System.out.println("client2");
+    System.out.println("Client response!!!!! \n" + responseObj.getHeaders() + responseObj.getBody());
+    
+    if (!asTCP) {
+      return responseObj;
+    }
 
     String redirectUrl = null;
     if ((redirectUrl = this.checkForRedirect(header.toString())) != null && this.allowedRedirects > 0) {

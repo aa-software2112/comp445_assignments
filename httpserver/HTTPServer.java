@@ -6,6 +6,7 @@ import java.util.regex.*;
 import java.lang.reflect.Method;
 import java.lang.reflect.*;
 import java.util.LinkedList;
+import SelectiveRepeat.*;
 
 public class HTTPServer extends Thread {
     private static Integer requestCounter = 0;
@@ -37,31 +38,69 @@ public class HTTPServer extends Thread {
     }
 
     public void run() {
+        boolean useTCP = false;
 
-        try{
-            // Wait for a client request, assign it to another port
-            httpServer = new ServerSocket(this.listeningPort);
-        } catch (IOException e) {
-                System.out.println("Could not open server socket over port " + this.listeningPort);
-                System.out.println(e);
-                System.exit(0);
-        }
-                
-        // Keep accepting client requests
-        int connectionsDropped = 0;
-        while(true) {
-            try{
-                Socket clientSocket = httpServer.accept(); // Blocking call
-                PrintWriter clientInput = new PrintWriter(clientSocket.getOutputStream(), true);
-                BufferedReader clientOutput = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-                HandleClientRequests newRequest = new HandleClientRequests(clientInput, clientOutput, clientSocket);
+        if (!useTCP) {
+            /**
+            System.out.println("Using Reliable UDP!");
+            UDPSenderReceiver udp = new UDPSenderReceiver(this.listeningPort);
+            udp.start();
+            ReliablePacketTransfer r = new ReliablePacketTransfer(
+                udp,
+                CLIENT_PORT
+            ); */
+            System.out.println("Using Reliable UDP!");
+            UDPSenderReceiver udp = new UDPSenderReceiver(this.listeningPort);
+            udp.start();
+            ReliablePacketTransfer r = new ReliablePacketTransfer(
+                udp
+            ); 
+            while (true) {
+                r.start();
+                String request = r.applicationWaitForMsg();
+                BufferedReader clientOutput = new BufferedReader(new StringReader(request));
+                HandleClientRequests newRequest = new HandleClientRequests(null, clientOutput, null);
                 if(!this.requestManager.addRequest(newRequest)) {
-                    newRequest.dropRequest("Exceeded TCP connection limit... Try resending");
-                    System.out.println("\tConnections Dropped: " + (++connectionsDropped));
+                    newRequest.dropRequest("Exceeded  connection limit... Try resending");
+                } else {
+                    synchronized (newRequest) { // One message at a time here
+                        try {
+                            newRequest.wait();
+                        } catch (Exception e) {
+                            System.out.println(e);
+                        }
+                    }
+                    String response = newRequest.getResponseString();
+                    r.applicationRespond(response);
                 }
+            }
+           
+        } else {
+            try{
+                // Wait for a client request, assign it to another port
+                httpServer = new ServerSocket(this.listeningPort);
             } catch (IOException e) {
-                System.out.println(e);
-                System.exit(0);
+                    System.out.println("Could not open server socket over port " + this.listeningPort);
+                    System.out.println(e);
+                    System.exit(0);
+            }
+                    
+            // Keep accepting client requests
+            int connectionsDropped = 0;
+            while(true) {
+                try{
+                    Socket clientSocket = httpServer.accept(); // Blocking call
+                    PrintWriter clientInput = new PrintWriter(clientSocket.getOutputStream(), true);
+                    BufferedReader clientOutput = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+                    HandleClientRequests newRequest = new HandleClientRequests(clientInput, clientOutput, clientSocket);
+                    if(!this.requestManager.addRequest(newRequest)) {
+                        newRequest.dropRequest("Exceeded TCP connection limit... Try resending");
+                        System.out.println("\tConnections Dropped: " + (++connectionsDropped));
+                    }
+                } catch (IOException e) {
+                    System.out.println(e);
+                    System.exit(0);
+                }
             }
         }
     }
@@ -81,6 +120,7 @@ public class HTTPServer extends Thread {
         private HashMap<String, String> params;
         private HashMap<String, String> headers;
         private String body;
+        private String responseString;
 
         HandleClientRequests(PrintWriter ci, BufferedReader co, Socket cs) {
             HTTPServer.requestCounter++;
@@ -94,13 +134,23 @@ public class HTTPServer extends Thread {
             this.path = new String();
             this.version = new String();
             this.body = new String();
+            this.responseString = null;
+        }
+
+        public String getResponseString() {
+            return this.responseString;
         }
 
         public Integer getRequestId() {
             return this.requestId;
         }
 
+        private boolean asTCP() {
+            return this.clientSocket != null;
+        }
+
         public void run() {
+    
             StringBuilder requestString = new StringBuilder(1024);
 
             // Read line by line, parsing as we go
@@ -144,9 +194,14 @@ public class HTTPServer extends Thread {
 
                 // Handle the request
                 try {
-                    String response = (String)HTTPServer.this.handler.invoke(null, this.path, this.method, this.params, this.headers, this.body);
-                    this.clientInput.write(response);
-                    this.clientInput.flush();
+                    String response = (String) HTTPServer.this.handler.invoke(null, this.path, this.method, this.params,
+                            this.headers, this.body);
+                        this.responseString = response;
+
+                    if (asTCP()) {
+                        this.clientInput.write(response);
+                        this.clientInput.flush();
+                    }
                 }catch(InvocationTargetException e) {
                     System.out.println("Could not invoke method " + HTTPServer.this.handler.getName());
                     System.out.println(e.getTargetException());
@@ -258,9 +313,11 @@ public class HTTPServer extends Thread {
         }
 
         public void closeRequest() throws Exception {
-            this.clientInput.close();
+            if (this.asTCP()) {
+                this.clientInput.close();
+                this.clientSocket.close();
+            }
             this.clientOutput.close();
-            this.clientSocket.close();
         }
     }
 
@@ -318,8 +375,11 @@ public class HTTPServer extends Thread {
             synchronized(runningRequests) {
                 this.runningRequests.remove(r.getRequestId());
             }
-            synchronized(requestQueue) {
+            synchronized (requestQueue) {
                 this.requestQueue.notify();
+            }
+            synchronized(r) { // In the case someone is waiting on the request itself
+                r.notify();
             }
         }
     }

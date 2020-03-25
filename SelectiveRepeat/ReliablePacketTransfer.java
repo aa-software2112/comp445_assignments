@@ -10,7 +10,7 @@ public class ReliablePacketTransfer {
   private Integer peerPort;
   private String peerAddress;
   private static final Integer ROUTER_PORT = 3005;
-  private ConcurrentLinkedQueue<String> receiveQueue;
+  private ConcurrentLinkedQueue<Packet> receiveQueue;
 
   // Application receives messages through this queue
   private ConcurrentLinkedQueue<String> applicationEar;
@@ -18,13 +18,20 @@ public class ReliablePacketTransfer {
   // Application sends messages through this queue
   private ConcurrentLinkedQueue<String> applicationMouth;
 
+  /** Used for server who does not know what the peer address is initially
+   * We only know it will come over localhost
+   */
+  public ReliablePacketTransfer(UDPSenderReceiver clientServer) {
+    this(clientServer, -1, "localhost");
+  }
+
   /** Supports localhost IP */
-  ReliablePacketTransfer(UDPSenderReceiver clientServer, Integer peerPort) {
+  public ReliablePacketTransfer(UDPSenderReceiver clientServer, Integer peerPort) {
     this(clientServer, peerPort, "localhost");
   }
 
-  ReliablePacketTransfer(UDPSenderReceiver clientServer, Integer peerPort, String ipAddress) {
-    this.receiveQueue = new ConcurrentLinkedQueue<String>();
+  public ReliablePacketTransfer(UDPSenderReceiver clientServer, Integer peerPort, String ipAddress) {
+    this.receiveQueue = new ConcurrentLinkedQueue<Packet>();
     this.applicationEar = new ConcurrentLinkedQueue<String>();
     this.applicationMouth = new ConcurrentLinkedQueue<String>();
     this.arq = new ARQ(clientServer, ROUTER_PORT);
@@ -77,7 +84,7 @@ public class ReliablePacketTransfer {
 
     // Send message from client to server
     System.out.println("********************B*******************");
-    arq.sendMessage(this.peerPort, this.peerAddress, message);
+    arq.sendMessage(peerPort, peerAddress, message);
 
     // Wait for response
     System.out.println("********************C*******************");
@@ -120,20 +127,26 @@ public class ReliablePacketTransfer {
     // This is a HTTP listen, it waits for a message and assembles it,
     // sending it up to the "ear" or application above when it has been fully combined
     // This function returns once this has been done
-    listen();
+    int lpeerPort = listen();
 
     System.out.println("********************A.1*******************");
     // Wait for response from application
     String response = waitOnApplicationResponse();
 
     System.out.printf("********************A.2*******************\n%s", response);
-    // Send message to client
-    this.arq.sendMessage(peerPort, peerAddress, response);
-
+    // Send message to client - wait infinitely for last ACK
+    int lastAckBeforeTeardown = arq.sendMessage(lpeerPort, peerAddress, response);
+    System.out.println("Waiting for last ACK: " + lastAckBeforeTeardown);
+    arq.waitACK(lastAckBeforeTeardown, -1);
+    
     // teardown
     System.out.println("********************B*******************");
+    // important to set the peerport before call to teardown @ server
+    this.peerPort = lpeerPort;
     teardown(false);
     System.out.println("Teardown complete!");
+    this.arq.instanceReset();
+    System.out.println("After reset");
   }
 
   public String applicationWaitForMsg() {
@@ -176,16 +189,23 @@ public class ReliablePacketTransfer {
     }
   }
 
-  public void listen() {
+  /**
+   * Listens for data, returns the PORT (localhost) over which
+   * the data was received. Especially useful to the server that does not
+   * know the port it will receive from ahead of time.
+   */
+  public int listen() {
     System.out.println("listen1");
     Pattern cntLenPat = Pattern.compile("Content-Length:\\s{0,1}(\\d+)", Pattern.CASE_INSENSITIVE);
     StringBuilder outBuff = new StringBuilder();
     int pkti = 0;
     int PAYLOAD_SIZE = Packet.MAX_PAYLOAD_SIZE;
-
+    int portReceived = -1;
     while (true) {
       this.arq.externalWaitForMsg();
-      String packet = this.receiveQueue.poll();
+      Packet packetObj = this.receiveQueue.poll();
+      String packet = packetObj.getPayload();
+      portReceived = packetObj.getPort();
       System.out.println(packet);
       Matcher matches = cntLenPat.matcher(packet); // Attempt to find content-length
 
@@ -210,7 +230,8 @@ public class ReliablePacketTransfer {
 
             while (contentLength != 0) { // Keep reading until all packets received
               this.arq.externalWaitForMsg(); // Get next packet
-              packet = this.receiveQueue.poll();
+              packetObj = this.receiveQueue.poll();
+              packet = packetObj.getPayload();
               System.out.println("New packet with length " + packet.length() + " content length " + contentLength);
               if (contentLength < PAYLOAD_SIZE) { // Last packet
                 outBuff.append(packet.substring(0, contentLength));
@@ -234,10 +255,11 @@ public class ReliablePacketTransfer {
     }
 
     System.out.println("Putting packet in application ear...");
-    synchronized(this.applicationEar) {
+    synchronized (this.applicationEar) {
       this.applicationEar.add(outBuff.toString());
       this.applicationEar.notify();
     }
+    return portReceived;
   }
 
 }
