@@ -61,7 +61,7 @@ public class HTTPServer extends Thread {
                 BufferedReader clientOutput = new BufferedReader(new StringReader(request));
                 HandleClientRequests newRequest = new HandleClientRequests(null, clientOutput, null);
                 if(!this.requestManager.addRequest(newRequest)) {
-                    newRequest.dropRequest("Exceeded  connection limit... Try resending");
+                    newRequest.dropRequest("Exceeded connection limit... Try resending");
                 } else {
                     synchronized (newRequest) { // One message at a time here
                         try {

@@ -210,7 +210,7 @@ public class Packet {
   }
 
   public int getPort() {
-    return this.port;
+  return this.port;
   }
 
   public void setPayload(String payload) {
@@ -225,6 +225,10 @@ public class Packet {
     byte[] seq = this.toBigEndian(seqNum, 4); // Takes up 4 bytes (at most)
     this.copyBytes(seq, bytePacket, 1); // Adds 4-bytes SEQ # @ offset 1
     this.seqNumber = seqNum;
+  }
+
+  public String getAddress() {
+    return this.peerAddress;
   }
 
 }

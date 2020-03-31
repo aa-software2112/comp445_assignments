@@ -18,6 +18,9 @@ public class ReliablePacketTransfer {
   // Application sends messages through this queue
   private ConcurrentLinkedQueue<String> applicationMouth;
 
+  // UDP
+  private UDPSenderReceiver clientServer;
+
   /** Used for server who does not know what the peer address is initially
    * We only know it will come over localhost
    */
@@ -34,11 +37,12 @@ public class ReliablePacketTransfer {
     this.receiveQueue = new ConcurrentLinkedQueue<Packet>();
     this.applicationEar = new ConcurrentLinkedQueue<String>();
     this.applicationMouth = new ConcurrentLinkedQueue<String>();
-    this.arq = new ARQ(clientServer, ROUTER_PORT);
+    this.arq = new ARQ(clientServer, ROUTER_PORT, new ReliablePacketHandler());
     this.arq.setExternalQueue(receiveQueue);
     this.arq.start();
     this.peerPort = peerPort;
     this.peerAddress = ipAddress;
+    this.clientServer = clientServer;
   }
 
   public void handshake() {
@@ -81,46 +85,93 @@ public class ReliablePacketTransfer {
   private void applicationSend(String message) {
     System.out.println("********************A*******************");
     handshake();
-
+    arq.toDataState();
     // Send message from client to server
     System.out.println("********************B*******************");
-    arq.sendMessage(peerPort, peerAddress, message);
-
+    int waitAck = arq.sendMessage(peerPort, peerAddress, message);
+    arq.waitACK(waitAck, -1);
+    
     // Wait for response
     System.out.println("********************C*******************");
     listen();
 
     // Send response UP to client - the client should be calling
-    // applicationWaitForMsg(). Regardless, teardown!
-    //String response = applicationWaitForMsg();
-    
-    // Teardown
+    arq.toTeardownState();
     System.out.println("********************D*******************");
     teardown(true);
     System.out.println("Teardown complete!");
+    // Close the actual port
+    this.arq.close();
   }
 
   private void teardown(boolean asClient) {
+    // Client initiates the teardown
+    this.arq.startGlobalTimer();
+    boolean done = false;
     if (!asClient) {
+      // Wait FIN
+      // Send ACK (automatically done)
+      // Send FIN
+      // Wait ACK
+      // Close
+      System.out.println("********************T0*******************");
+      done = this.arq.waitFIN(-1);
+      if (done) {
+        // Premature end
+        System.out.println("T0 done");
+        return;
+      }
       System.out.println("********************T1*******************");
       int ackNum = this.arq.sendFIN(peerPort, peerAddress); // Send client FIN message
-      System.out.println("********************T2*******************");
-      this.arq.waitACK(ackNum, -1);
+      System.out.printf("********************T2 %d*******************\n", ackNum);
+      done = this.arq.waitACK(ackNum, -1);
+      if (done) {
+        // Premature end
+        System.out.println("T2 done");
+        return;
+      }
       System.out.println("********************T3*******************");
-      this.arq.waitFIN(1000); // Wait 1 second for FIN from client, otherwise just quit
-     System.out.println("********************T4*******************");
-   } else {
+    } else {
+      // Send FIN
+      // Wait for ACK
+      // Wait for FIN
+      // Send ACK (automatically done)
+      // Close
+      System.out.println("********************T0******************");
+      int ackNum = this.arq.sendFIN(peerPort, peerAddress);
       System.out.println("********************T1*******************");
-      this.arq.waitFIN(-1); // Wait infinitely for FIN from server
+      done = this.arq.waitACK(ackNum, -1);
+      if (done) {
+        // Premature end
+        System.out.println("T1 done");
+        return;
+      }
       System.out.println("********************T2*******************");
-      int ackNum = this.arq.sendFIN(peerPort, peerAddress); // Send FIN back to server
-      System.out.println("********************T3*******************");
-      this.arq.waitACK(ackNum, 1000); // Wait 1 second for ACK, otherwise just quit
+      done = this.arq.waitFIN(-1);
+      if (done) {
+        // Premature end
+        System.out.println("T2 done");
+        return;
+      }
       System.out.println("********************T4*******************");
+
     }
   }
 
-  private void applicationListen() {
+  private synchronized void applicationListen() {
+    this.arq.acceptMessage();
+    System.out.println("\tWaiting for syn");
+    this.arq.externalWaitForSyn();
+    int port = this.arq.getPeerPortFromSyn();
+    // Generate sendSequenceNumber & base and send out SYN-ACK
+    int ack = this.arq.sendSYNACK(port, peerAddress);
+
+    System.out.println("\tSending SYNACK");
+    System.out.println("\tWaiting for ACK " + ack);
+    this.arq.waitACK(ack, -1);
+    System.out.println("\tReceived ACK");
+    this.arq.toDataState();
+
     // Wait for data
     System.out.println("********************A*******************");
 
@@ -139,13 +190,15 @@ public class ReliablePacketTransfer {
     System.out.println("Waiting for last ACK: " + lastAckBeforeTeardown);
     arq.waitACK(lastAckBeforeTeardown, -1);
     
+    this.arq.toTeardownState();
     // teardown
     System.out.println("********************B*******************");
     // important to set the peerport before call to teardown @ server
     this.peerPort = lpeerPort;
     teardown(false);
     System.out.println("Teardown complete!");
-    this.arq.instanceReset();
+    this.arq.close();
+    this.arq.reset();
     System.out.println("After reset");
   }
 
